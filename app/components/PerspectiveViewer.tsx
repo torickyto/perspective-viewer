@@ -2,6 +2,7 @@
 
 import React, { useRef, useEffect, useState } from 'react';
 import { Loader } from 'lucide-react';
+import ParticleOverlay from './ParticleOverlay';
 
 interface PerspectiveViewerProps {
   videoPath: string;
@@ -325,6 +326,11 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
           </div>
         )}
       </div>
+
+      <ParticleOverlay 
+        audioElement={audioRef.current}
+        isPlaying={isMoving}
+      />
 
       {showInterface && (
         <div className="fixed bottom-4 left-4 text-white text-xs font-mono opacity-50">
