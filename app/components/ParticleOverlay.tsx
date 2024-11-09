@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 
 interface Particle {
   x: number;
@@ -15,26 +15,25 @@ interface Particle {
 }
 
 interface ParticleOverlayProps {
-  audioElement?: HTMLAudioElement | null;
+  analyserNode?: AnalyserNode | null;
   isPlaying: boolean;
 }
 
-const ParticleOverlay: React.FC<ParticleOverlayProps> = ({ audioElement, isPlaying }) => {
+const ParticleOverlay: React.FC<ParticleOverlayProps> = ({ 
+  analyserNode, 
+  isPlaying 
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<Particle[]>([]);
   const animationFrameRef = useRef<number>();
-  const audioContextRef = useRef<AudioContext>();
-  const analyserRef = useRef<AnalyserNode>();
   const lastBassImpactRef = useRef(0);
-  const bassAccumulatorRef = useRef(0);
-  
 
   const createAshPoints = (size: number) => {
     const points = [];
-    const numPoints = Math.floor(Math.random() * 3) + 5; 
+    const numPoints = Math.floor(Math.random() * 4) + 6; 
     for (let i = 0; i < numPoints; i++) {
       const angle = (i / numPoints) * Math.PI * 2;
-      const randomRadius = size * (0.5 + Math.random() * 0.5);
+      const randomRadius = size * (0.3 + Math.random() * 0.7); 
       points.push({
         x: Math.cos(angle) * randomRadius,
         y: Math.sin(angle) * randomRadius
@@ -43,50 +42,20 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({ audioElement, isPlayi
     return points;
   };
 
-  useEffect(() => {
-    if (!audioElement) return;
-
-    const audioContext = new AudioContext();
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 1024; 
-    
-    const bassFilter = audioContext.createBiquadFilter();
-    bassFilter.type = 'lowpass';
-    bassFilter.frequency.value = 150;
-    bassFilter.Q.value = 1;
-
-    const bassBoost = audioContext.createGain();
-    bassBoost.gain.value = 2.0;
-
-    const source = audioContext.createMediaElementSource(audioElement);
-    source
-      .connect(bassFilter)
-      .connect(bassBoost)
-      .connect(analyser)
-      .connect(audioContext.destination);
-
-    analyserRef.current = analyser;
-    audioContextRef.current = audioContext;
-
-    return () => {
-      audioContext.close();
-    };
-  }, [audioElement]);
-
   const createParticle = (canvas: HTMLCanvasElement, intense = false): Particle => {
     const baseSize = intense ? 
-      Math.random() * 3 + 2 : 
-      Math.random() * 2 + 1;
+      Math.random() * 4 + 3 : 
+      Math.random() * 3 + 2;
     
     return {
       x: Math.random() * canvas.width,
       y: intense ? canvas.height + 10 : Math.random() * canvas.height,
       size: baseSize,
       rotation: Math.random() * Math.PI * 2,
-      rotationSpeed: (Math.random() - 0.5) * 0.1,
-      speedX: (Math.random() - 0.5) * 2,
-      speedY: intense ? -Math.random() * 15 - 5 : -Math.random() * 2 - 1,
-      alpha: Math.random() * 0.5 + 0.2,
+      rotationSpeed: (Math.random() - 0.5) * 0.05, 
+      speedX: (Math.random() - 0.5) * (intense ? 3 : 1), 
+      speedY: intense ? -Math.random() * 12 - 4 : -Math.random() * 1.5 - 0.5, 
+      alpha: Math.random() * 0.4 + 0.2,
       points: createAshPoints(baseSize)
     };
   };
@@ -97,7 +66,7 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({ audioElement, isPlayi
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    const particles: Particle[] = Array(200).fill(null).map(() => 
+    const particles: Particle[] = Array(300).fill(null).map(() => 
       createParticle(canvas)
     );
     particlesRef.current = particles;
@@ -112,12 +81,11 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({ audioElement, isPlayi
   }, []);
 
   useEffect(() => {
-    if (!canvasRef.current || !analyserRef.current) return;
+    if (!canvasRef.current || !analyserNode) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d')!;
-    const analyser = analyserRef.current;
-    const freqData = new Uint8Array(analyser.frequencyBinCount);
+    const freqData = new Uint8Array(analyserNode.frequencyBinCount);
 
     const drawAshParticle = (particle: Particle, ctx: CanvasRenderingContext2D) => {
       ctx.save();
@@ -132,48 +100,54 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({ audioElement, isPlayi
       }
       ctx.closePath();
 
-      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, particle.size);
-      gradient.addColorStop(0, 'rgba(255, 150, 50, 0.2)');
-      gradient.addColorStop(0.5, 'rgba(150, 150, 150, 0.2)');
-      gradient.addColorStop(1, 'rgba(100, 100, 100, 0)');
+      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, particle.size * 1.5);
+      gradient.addColorStop(0, 'rgba(180, 180, 180, 0.7)');
+      gradient.addColorStop(0.5, 'rgba(100, 100, 100, 0.4)');
+      gradient.addColorStop(1, 'rgba(50, 50, 50, 0)');
 
-      ctx.fillStyle = 'rgba(120, 120, 120, 0.8)';
+      ctx.fillStyle = gradient;
       ctx.fill();
+
+      ctx.globalAlpha = particle.alpha * 0.5;
+      const glowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, particle.size * 2);
+      glowGradient.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
+      glowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = glowGradient;
+      ctx.fill();
+
       ctx.restore();
     };
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       
+      let bassIntensity = 0;
       if (isPlaying) {
-        analyser.getByteFrequencyData(freqData);
-        
+        analyserNode.getByteFrequencyData(freqData);
         const bassRange = freqData.slice(0, Math.floor(freqData.length * 0.1));
-        const bassIntensity = Array.from(bassRange).reduce((a, b) => a + b, 0) / bassRange.length / 255;
+        bassIntensity = Array.from(bassRange).reduce((a, b) => a + b, 0) / bassRange.length / 255;
         
-        bassAccumulatorRef.current += bassIntensity;
-        const now = Date.now();
-        
-        if (bassIntensity > 0.7 && now - lastBassImpactRef.current > 100) {
-          const burstCount = Math.floor(bassIntensity * 20);
+        if (bassIntensity > 0.6 && Date.now() - lastBassImpactRef.current > 100) {
+          const burstCount = Math.floor(bassIntensity * 30);
           for (let i = 0; i < burstCount; i++) {
             particlesRef.current.push(createParticle(canvas, true));
           }
-          lastBassImpactRef.current = now;
+          lastBassImpactRef.current = Date.now();
         }
-
-        particlesRef.current.forEach(particle => {
-          particle.speedY *= (.6+ bassIntensity * 1.4);
-          particle.rotationSpeed *= (.5 + bassIntensity * 0.3);
-          particle.alpha = Math.min(1, particle.alpha * (1 + bassIntensity));
-        });
       }
 
       particlesRef.current = particlesRef.current.filter(particle => {
-        particle.y += particle.speedY;
-        particle.x += particle.speedX;
-        particle.rotation += particle.rotationSpeed;
-        particle.alpha *= 0.99;
+        if (isPlaying) {
+
+          particle.y += particle.speedY * (1 + bassIntensity);
+          particle.x += particle.speedX * (1 + bassIntensity);
+          particle.rotation += particle.rotationSpeed;
+          particle.alpha *= 0.995;
+
+
+          particle.speedY *= (0.6 + bassIntensity * 1.4);
+          particle.rotationSpeed *= (0.5 + bassIntensity * 0.3);
+        }
 
         if (particle.y < -20 || particle.alpha < 0.01) {
           return false;
@@ -183,7 +157,7 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({ audioElement, isPlayi
         return true;
       });
 
-      while (particlesRef.current.length < 200) {
+      while (particlesRef.current.length < 300) {
         particlesRef.current.push(createParticle(canvas));
       }
 
@@ -197,7 +171,7 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({ audioElement, isPlayi
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isPlaying]);
+  }, [isPlaying, analyserNode]);
 
   return (
     <canvas

@@ -17,8 +17,11 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
   smoothingFactor = 0.99,
   frameRate = 60
 }) => {
+  const [hasInteracted, setHasInteracted] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
   const [audioLoaded, setAudioLoaded] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -62,7 +65,7 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
     };
   }, [videoSize]);
 
-  // Initialize video and canvas
+
   useEffect(() => {
     const video = videoRef.current;
     const audio = audioRef.current;
@@ -71,8 +74,8 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
 
     video.preload = 'auto';
     audio.preload = 'auto';
-    audio.volume = 0.5; // Set audio to 50% volume
-    audio.loop = true; // Enable audio looping
+    audio.volume = 0.5; 
+    audio.loop = true; 
 
     const updateCanvasSize = () => {
       if (video.videoWidth && video.videoHeight) {
@@ -115,7 +118,7 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
     const handleAudioLoaded = () => {
       console.log('Audio loaded');
       setAudioLoaded(true);
-      audio.pause(); // Ensure audio starts paused
+      audio.pause(); 
     };
 
     const handleAudioError = (e: ErrorEvent) => {
@@ -230,33 +233,66 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
     };
   }, [isLoaded, audioLoaded, smoothingFactor, frameRate, distortionLevel]);
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseMove = async (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isLoaded || !audioRef.current) return;
     
+    if (!audioContext) {
+      try {
+        const ctx = new AudioContext();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        
+        const bassFilter = ctx.createBiquadFilter();
+        bassFilter.type = 'lowpass';
+        bassFilter.frequency.value = 150;
+        bassFilter.Q.value = 1;
+  
+        const bassBoost = ctx.createGain();
+        bassBoost.gain.value = 2.0;
+  
+        const source = ctx.createMediaElementSource(audioRef.current);
+        source
+          .connect(bassFilter)
+          .connect(bassBoost)
+          .connect(analyser)
+          .connect(ctx.destination);
+  
+        await ctx.resume();
+        setAudioContext(ctx);
+        analyserRef.current = analyser;
+      } catch (err) {
+        console.error('Audio context initialization failed:', err);
+      }
+    }
+  
     const x = e.clientX / window.innerWidth;
     const y = e.clientY / window.innerHeight;
     
     setMousePosition({ x, y });
     targetTimeRef.current = Math.max(0, Math.min(x * duration, duration - 0.01));
-
+  
     if (!isMoving) {
       setIsMoving(true);
-      audioRef.current.play().catch(console.error);
+      try {
+        if (audioRef.current.paused) {
+          await audioRef.current.play();
+        }
+      } catch (err) {
+        console.error('Audio play failed:', err);
+      }
     }
-
-    // Reset the movement timeout
+  
     if (moveTimeoutRef.current) {
       clearTimeout(moveTimeoutRef.current);
     }
-
-    // Set a timeout to detect when movement stops
+  
     moveTimeoutRef.current = setTimeout(() => {
       setIsMoving(false);
       if (audioRef.current) {
         audioRef.current.pause();
       }
-    }, 50); 
-
+    }, 50);
+  
     setShowInterface(false);
     setTimeout(() => setShowInterface(true), 2000);
   };
@@ -276,6 +312,12 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
+      {!hasInteracted && (
+        <div 
+          className="fixed inset-0 bg-black cursor-pointer z-50"
+          onClick={() => setHasInteracted(true)}
+        />
+      )}
       <div 
         className="fixed inset-0 bg-black opacity-50 pointer-events-none"
         style={{
@@ -328,10 +370,9 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       </div>
 
       <ParticleOverlay 
-        audioElement={audioRef.current}
-        isPlaying={isMoving}
-      />
-
+      analyserNode={analyserRef.current}
+      isPlaying={isMoving && hasInteracted}
+    />
       {showInterface && (
         <div className="fixed bottom-4 left-4 text-white text-xs font-mono opacity-50">
           <div>TIME: {currentTimeRef.current.toFixed(2)}/{duration.toFixed(2)}</div>
