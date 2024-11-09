@@ -34,11 +34,12 @@ export default function Home() {
   return (
     <ErrorBoundary>
       <main className="w-screen h-screen bg-black">
-        <PerspectiveViewer 
-          videoPath="/videos/fallenangel.mp4" 
-          smoothingFactor={0.999}
-          frameRate={60}
-        />
+      <PerspectiveViewer 
+      videoPath="/videos/fallenangelcrtv.mp4" 
+      audioPath="/teeth.mp3"
+      smoothingFactor={0.999}
+      frameRate={60}
+/>
       </main>
     </ErrorBoundary>
   );

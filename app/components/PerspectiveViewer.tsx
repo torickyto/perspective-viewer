@@ -1,67 +1,77 @@
 'use client';
 
 import React, { useRef, useEffect, useState } from 'react';
+import { Loader } from 'lucide-react';
 
 interface PerspectiveViewerProps {
   videoPath: string;
+  audioPath?: string;
   smoothingFactor?: number;
   frameRate?: number;
 }
 
 const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({ 
   videoPath,
+  audioPath = '/teeth.mp3',
   smoothingFactor = 0.99,
   frameRate = 60
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [audioLoaded, setAudioLoaded] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const contextRef = useRef<CanvasRenderingContext2D | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [duration, setDuration] = useState(0);
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [distortionLevel, setDistortionLevel] = useState(0);
+  const [showInterface, setShowInterface] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState('initializing');
-  const [debugInfo, setDebugInfo] = useState({ current: 0, target: 0 });
-  const [videoSize, setVideoSize] = useState({ width: 16, height: 9 }); // Default 16:9
-
-  // Refs for smooth animation
+  const [videoSize, setVideoSize] = useState({ width: 16, height: 9 });
+  const [isMoving, setIsMoving] = useState(false);
+  const moveTimeoutRef = useRef<NodeJS.Timeout>();
+  
   const targetTimeRef = useRef(0);
   const currentTimeRef = useRef(0);
   const animationFrameRef = useRef<number>();
   const isSeekingRef = useRef(false);
 
-  // Calculate container dimensions
   const containerStyle = React.useMemo(() => {
     const aspectRatio = videoSize.width / videoSize.height;
-    const vh = Math.min(window.innerHeight * 0.5, 500); // 50% of viewport height, max 500px
-    const vw = Math.min(window.innerWidth * 0.5, 800); // 50% of viewport width, max 800px
+    const vh = Math.min(window.innerHeight * 0.5, 500);
+    const vw = Math.min(window.innerWidth * 0.5, 800);
     
     let width;
     let height;
     
     if (vw / vh > aspectRatio) {
-      // Height limited
       height = vh;
       width = vh * aspectRatio;
     } else {
-      // Width limited
       width = vw;
       height = vw / aspectRatio;
     }
 
     return {
       width: `${width}px`,
-      height: `${height}px`
+      height: `${height}px`,
     };
   }, [videoSize]);
 
   // Initialize video and canvas
   useEffect(() => {
     const video = videoRef.current;
+    const audio = audioRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    if (!video || !canvas || !audio) return;
 
     video.preload = 'auto';
+    audio.preload = 'auto';
+    audio.volume = 0.5; // Set audio to 50% volume
+    audio.loop = true; // Enable audio looping
 
     const updateCanvasSize = () => {
       if (video.videoWidth && video.videoHeight) {
@@ -101,39 +111,69 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       video.pause();
     };
 
-    const handleSeeking = () => {
-      isSeekingRef.current = true;
+    const handleAudioLoaded = () => {
+      console.log('Audio loaded');
+      setAudioLoaded(true);
+      audio.pause(); // Ensure audio starts paused
     };
 
-    const handleSeeked = () => {
-      isSeekingRef.current = false;
-      if (contextRef.current) {
-        contextRef.current.drawImage(video, 0, 0);
-      }
+    const handleAudioError = (e: ErrorEvent) => {
+      console.error('Audio error:', e);
+      setError(prev => prev || 'Audio failed to load');
+    };
+
+    const handleError = (e: ErrorEvent) => {
+      console.error('Video error:', e);
+      setError(e.message);
+      setLoadingState('error');
     };
 
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('loadeddata', handleLoadedData);
-    video.addEventListener('seeking', handleSeeking);
-    video.addEventListener('seeked', handleSeeked);
+    video.addEventListener('error', handleError);
+    audio.addEventListener('loadeddata', handleAudioLoaded);
+    audio.addEventListener('error', handleAudioError);
 
     video.load();
 
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('loadeddata', handleLoadedData);
-      video.removeEventListener('seeking', handleSeeking);
-      video.removeEventListener('seeked', handleSeeked);
+      video.removeEventListener('error', handleError);
+      audio.removeEventListener('loadeddata', handleAudioLoaded);
+      audio.removeEventListener('error', handleAudioError);
+      if (moveTimeoutRef.current) {
+        clearTimeout(moveTimeoutRef.current);
+      }
     };
-  }, [videoPath]);
+  }, [videoPath, audioPath]);
 
-  // Animation loop
+  // Animation and effects
   useEffect(() => {
     let lastTime = 0;
     const interval = 1000 / frameRate;
 
+    const addNoise = () => {
+      if (!contextRef.current || !videoRef.current) return;
+      const imageData = contextRef.current.getImageData(
+        0, 0, 
+        videoRef.current.videoWidth, 
+        videoRef.current.videoHeight
+      );
+      const data = imageData.data;
+      
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * distortionLevel;
+        data[i] += noise;     // R
+        data[i + 1] += noise; // G
+        data[i + 2] += noise; // B
+      }
+      
+      contextRef.current.putImageData(imageData, 0, 0);
+    };
+
     const animate = (time: number) => {
-      if (!isLoaded || !videoRef.current || !contextRef.current) return;
+      if (!isLoaded || !videoRef.current || !contextRef.current || !audioRef.current) return;
 
       const elapsed = time - lastTime;
       if (elapsed < interval) {
@@ -142,22 +182,34 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       }
 
       const video = videoRef.current;
+      const audio = audioRef.current;
       const delta = targetTimeRef.current - currentTimeRef.current;
       
-      // Smooth easing
       const ease = 1 - Math.pow(smoothingFactor, elapsed / 16.67);
       currentTimeRef.current += delta * ease;
 
       if (!isSeekingRef.current) {
         try {
           video.currentTime = currentTimeRef.current;
+          
+          contextRef.current.clearRect(0, 0, video.videoWidth, video.videoHeight);
+          
           contextRef.current.drawImage(video, 0, 0);
-          lastTime = time;
 
-          setDebugInfo({
-            current: currentTimeRef.current,
-            target: targetTimeRef.current
-          });
+          const movement = Math.abs(delta);
+          setDistortionLevel(movement * 50);
+          
+          addNoise();
+          
+          if (movement > 0.01) {
+            const strength = movement * 10;
+            contextRef.current.globalCompositeOperation = 'screen';
+            contextRef.current.drawImage(video, strength, 0);
+            contextRef.current.drawImage(video, -strength, 0);
+            contextRef.current.globalCompositeOperation = 'source-over';
+          }
+          
+          lastTime = time;
         } catch (err) {
           console.error('Frame update error:', err);
         }
@@ -166,7 +218,7 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       animationFrameRef.current = requestAnimationFrame(animate);
     };
 
-    if (isLoaded) {
+    if (isLoaded && audioLoaded) {
       animationFrameRef.current = requestAnimationFrame(animate);
     }
 
@@ -175,24 +227,64 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [isLoaded, smoothingFactor, frameRate]);
+  }, [isLoaded, audioLoaded, smoothingFactor, frameRate, distortionLevel]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isLoaded || !containerRef.current) return;
-
-    const rect = containerRef.current.getBoundingClientRect();
-    const mouseX = (e.clientX - rect.left) / rect.width;
-    const newTargetTime = Math.max(0, Math.min(mouseX * duration, duration - 0.01));
+    if (!isLoaded || !audioRef.current) return;
     
-    targetTimeRef.current = newTargetTime;
+    const x = e.clientX / window.innerWidth;
+    const y = e.clientY / window.innerHeight;
+    
+    setMousePosition({ x, y });
+    targetTimeRef.current = Math.max(0, Math.min(x * duration, duration - 0.01));
+
+    if (!isMoving) {
+      setIsMoving(true);
+      audioRef.current.play().catch(console.error);
+    }
+
+    // Reset the movement timeout
+    if (moveTimeoutRef.current) {
+      clearTimeout(moveTimeoutRef.current);
+    }
+
+    // Set a timeout to detect when movement stops
+    moveTimeoutRef.current = setTimeout(() => {
+      setIsMoving(false);
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    }, 50); 
+
+    setShowInterface(false);
+    setTimeout(() => setShowInterface(true), 2000);
+  };
+
+  const handleMouseLeave = () => {
+    setMousePosition({ x: 0.5, y: 0.5 });
+    setShowInterface(true);
+    setIsMoving(false);
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
   };
 
   return (
-    <div className="relative w-full h-full bg-black flex items-center justify-center">
+    <div 
+      className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
+      <div 
+        className="fixed inset-0 bg-black opacity-50 pointer-events-none"
+        style={{
+          backgroundImage: `radial-gradient(circle at ${mousePosition.x * 100}% ${mousePosition.y * 100}%, transparent 0%, black 70%)`
+        }}
+      />
+      
       <div 
         ref={containerRef}
-        onMouseMove={handleMouseMove}
-        className="relative select-none bg-black"
+        className="relative select-none"
         style={containerStyle}
       >
         <video
@@ -205,29 +297,43 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
           <source src={videoPath} type="video/mp4" />
         </video>
 
+        <audio
+          ref={audioRef}
+          preload="auto"
+          loop
+        >
+          <source src={audioPath} type="audio/mpeg" />
+        </audio>
+
         <canvas
           ref={canvasRef}
-          className="w-full h-full object-contain"
+          className="w-full h-full object-contain shadow-2xl"
+          style={{
+            filter: `contrast(1.1) saturate(${1 + distortionLevel * 0.01})`,
+          }}
         />
         
-        {!isLoaded && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 bg-opacity-50 text-white">
-            <div className="text-xl mb-2">Loading... ({loadingState})</div>
+        {(!isLoaded || !audioLoaded) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-75 text-white">
+            <Loader className="w-8 h-8 animate-spin mb-4" />
+            <div className="text-sm font-mono">{loadingState}</div>
             {error && (
-              <div className="text-red-400 text-sm max-w-md text-center px-4">
-                Error: {error}
+              <div className="mt-2 text-red-400 text-xs max-w-md text-center px-4">
+                {error}
               </div>
             )}
           </div>
         )}
       </div>
 
-      <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white p-2 text-sm rounded">
-        Duration: {duration.toFixed(2)}s<br />
-        Current: {debugInfo.current.toFixed(2)}s<br />
-        Target: {debugInfo.target.toFixed(2)}s<br />
-        State: {isSeekingRef.current ? 'Seeking' : 'Ready'}
-      </div>
+      {showInterface && (
+        <div className="fixed bottom-4 left-4 text-white text-xs font-mono opacity-50">
+          <div>TIME: {currentTimeRef.current.toFixed(2)}/{duration.toFixed(2)}</div>
+          <div>DISTORTION: {(distortionLevel * 100).toFixed(0)}%</div>
+          <div>POSITION: {(mousePosition.x * 100).toFixed(0)}%</div>
+          <div>AUDIO: {isMoving ? 'PLAYING' : 'PAUSED'}</div>
+        </div>
+      )}
     </div>
   );
 };
