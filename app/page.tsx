@@ -36,7 +36,7 @@ export default function Home() {
       <main className="w-screen h-screen bg-black">
       <PerspectiveViewer 
       videoPath="/videos/fallenangelcrtv.mp4" 
-      audioPath="/teeth.mp3"
+      audioPath="/teethr.mp3"
       smoothingFactor={0.999}
       frameRate={60}
 />

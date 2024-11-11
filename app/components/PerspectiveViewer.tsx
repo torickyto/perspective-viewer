@@ -37,6 +37,7 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
   const [videoSize, setVideoSize] = useState({ width: 16, height: 9 });
   const [isMoving, setIsMoving] = useState(false);
   const moveTimeoutRef = useRef<NodeJS.Timeout>();
+  const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   
   const targetTimeRef = useRef(0);
   const currentTimeRef = useRef(0);
@@ -149,6 +150,13 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       if (moveTimeoutRef.current) {
         clearTimeout(moveTimeoutRef.current);
       }
+      if (audioSourceRef.current) {
+        audioSourceRef.current.disconnect();
+        audioSourceRef.current = null;
+      }
+      if (audioContext) {
+        audioContext.close();
+      }
     };
   }, [videoPath, audioPath]);
 
@@ -234,11 +242,13 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
   }, [isLoaded, audioLoaded, smoothingFactor, frameRate, distortionLevel]);
 
   const handleMouseMove = async (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isLoaded || !audioRef.current) return;
+    if (!isLoaded || !audioRef.current || !hasInteracted) return;
     
     if (!audioContext) {
       try {
         const ctx = new AudioContext();
+        await ctx.resume();
+        
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 1024;
         
@@ -250,14 +260,19 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
         const bassBoost = ctx.createGain();
         bassBoost.gain.value = 2.0;
   
-        const source = ctx.createMediaElementSource(audioRef.current);
-        source
-          .connect(bassFilter)
-          .connect(bassBoost)
-          .connect(analyser)
-          .connect(ctx.destination);
+        // Only create source if it doesn't exist
+        if (!audioSourceRef.current) {
+          const source = ctx.createMediaElementSource(audioRef.current);
+          audioSourceRef.current = source;
+          
+          // Connect the audio chain
+          source
+            .connect(bassFilter)
+            .connect(bassBoost)
+            .connect(analyser)
+            .connect(ctx.destination);
+        }
   
-        await ctx.resume();
         setAudioContext(ctx);
         analyserRef.current = analyser;
       } catch (err) {
@@ -273,8 +288,11 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
   
     if (!isMoving) {
       setIsMoving(true);
+      if (audioContext?.state === 'suspended') {
+        await audioContext.resume();
+      }
       try {
-        if (audioRef.current.paused) {
+        if (audioRef.current?.paused) {
           await audioRef.current.play();
         }
       } catch (err) {
@@ -315,7 +333,12 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       {!hasInteracted && (
         <div 
           className="fixed inset-0 bg-black cursor-pointer z-50"
-          onClick={() => setHasInteracted(true)}
+          onClick={async () => {
+            setHasInteracted(true);
+            if (audioContext?.state === 'suspended') {
+              await audioContext.resume();
+            }
+          }}
         />
       )}
       <div 

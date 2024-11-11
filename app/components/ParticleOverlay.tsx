@@ -65,8 +65,9 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({
     const canvas = canvasRef.current;
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-
-    const particles: Particle[] = Array(300).fill(null).map(() => 
+  
+    // Increase initial particle count
+    const particles: Particle[] = Array(500).fill(null).map(() => 
       createParticle(canvas)
     );
     particlesRef.current = particles;
@@ -92,31 +93,32 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({
       ctx.translate(particle.x, particle.y);
       ctx.rotate(particle.rotation);
       ctx.globalAlpha = particle.alpha;
-
+    
       ctx.beginPath();
       ctx.moveTo(particle.points[0].x, particle.points[0].y);
       for (let i = 1; i < particle.points.length; i++) {
         ctx.lineTo(particle.points[i].x, particle.points[i].y);
       }
       ctx.closePath();
-
+    
       const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, particle.size * 1.5);
-      gradient.addColorStop(0, 'rgba(180, 180, 180, 0.7)');
-      gradient.addColorStop(0.5, 'rgba(100, 100, 100, 0.4)');
-      gradient.addColorStop(1, 'rgba(50, 50, 50, 0)');
-
+      gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)'); 
+      gradient.addColorStop(0.5, 'rgba(200, 200, 200, 0.4)');
+      gradient.addColorStop(1, 'rgba(150, 150, 150, 0)');
+    
       ctx.fillStyle = gradient;
       ctx.fill();
-
-      ctx.globalAlpha = particle.alpha * 0.5;
-      const glowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, particle.size * 2);
-      glowGradient.addColorStop(0, 'rgba(255, 255, 255, 0.1)');
-      glowGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    
+      ctx.globalAlpha = particle.alpha * 0.6;
+      const glowGradient = ctx.createRadialGradient(0, 0, 0, 0, 0, particle.size * 2.5);
+      glowGradient.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
+      glowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
       ctx.fillStyle = glowGradient;
       ctx.fill();
-
+    
       ctx.restore();
     };
+    
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -127,8 +129,9 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({
         const bassRange = freqData.slice(0, Math.floor(freqData.length * 0.1));
         bassIntensity = Array.from(bassRange).reduce((a, b) => a + b, 0) / bassRange.length / 255;
         
-        if (bassIntensity > 0.6 && Date.now() - lastBassImpactRef.current > 100) {
-          const burstCount = Math.floor(bassIntensity * 30);
+        // more particles on bass hits
+        if (bassIntensity > 0.5 && Date.now() - lastBassImpactRef.current > 50) {
+          const burstCount = Math.floor(bassIntensity * 50); 
           for (let i = 0; i < burstCount; i++) {
             particlesRef.current.push(createParticle(canvas, true));
           }
@@ -138,29 +141,27 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({
 
       particlesRef.current = particlesRef.current.filter(particle => {
         if (isPlaying) {
-
-          particle.y += particle.speedY * (1 + bassIntensity);
+          particle.y += particle.speedY * (1 + bassIntensity * 1.5);
           particle.x += particle.speedX * (1 + bassIntensity);
           particle.rotation += particle.rotationSpeed;
-          particle.alpha *= 0.995;
-
-
-          particle.speedY *= (0.6 + bassIntensity * 1.4);
-          particle.rotationSpeed *= (0.5 + bassIntensity * 0.3);
+          particle.alpha *= 0.997;
+    
+          particle.speedY *= (0.7 + bassIntensity * 1.5);
+          particle.rotationSpeed *= (0.6 + bassIntensity * 0.4);
         }
-
+    
         if (particle.y < -20 || particle.alpha < 0.01) {
           return false;
         }
-
+    
         drawAshParticle(particle, ctx);
         return true;
       });
 
-      while (particlesRef.current.length < 300) {
+      while (particlesRef.current.length < 500) {
         particlesRef.current.push(createParticle(canvas));
       }
-
+    
       animationFrameRef.current = requestAnimationFrame(animate);
     };
 
