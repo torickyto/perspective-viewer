@@ -27,7 +27,6 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const contextRef = useRef<CanvasRenderingContext2D | null>(null);
-  const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [duration, setDuration] = useState(0);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -50,7 +49,7 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       width: '100vw',
       height: '100vh',
     };
-  }, [videoSize, videoPath]);
+  }, []);
 
   const updateCanvasSize = () => {
     const video = videoRef.current;
@@ -95,18 +94,25 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    const checkAudioLoaded = () => {
+      if (audioRef.current) {
+        audioRef.current.addEventListener('canplaythrough', () => {
+          setAudioLoaded(true);
+        }, { once: true });
+      }
+    };
+  
+    checkAudioLoaded();
+  }, [audioPath]);
 
   useEffect(() => {
     const video = videoRef.current;
-    const audio = audioRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || !audio) return;
-
+    if (!video || !canvas) return;
+  
     video.preload = 'auto';
-    audio.preload = 'auto';
-    audio.volume = 0.5; 
-    audio.loop = true; 
-
+  
     const handleLoadedMetadata = () => {
       console.log('Video metadata loaded:', {
         duration: video.duration,
@@ -118,7 +124,7 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       updateCanvasSize();
       video.currentTime = 0;
     };
-
+  
     const handleLoadedData = () => {
       console.log('Video data loaded');
       updateCanvasSize();
@@ -129,50 +135,26 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       setLoadingState('ready');
       video.pause();
     };
-
-    const handleAudioLoaded = () => {
-      console.log('Audio loaded');
-      setAudioLoaded(true);
-      audio.pause(); 
-    };
-
-    const handleAudioError = (e: ErrorEvent) => {
-      console.error('Audio error:', e);
-      setError(prev => prev || 'Audio failed to load');
-    };
-
+  
     const handleError = (e: ErrorEvent) => {
       console.error('Video error:', e);
       setError(e.message);
       setLoadingState('error');
     };
-
+  
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('loadeddata', handleLoadedData);
     video.addEventListener('error', handleError);
-    audio.addEventListener('loadeddata', handleAudioLoaded);
-    audio.addEventListener('error', handleAudioError);
-
+  
     video.load();
-
+  
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('loadeddata', handleLoadedData);
       video.removeEventListener('error', handleError);
-      audio.removeEventListener('loadeddata', handleAudioLoaded);
-      audio.removeEventListener('error', handleAudioError);
-      if (moveTimeoutRef.current) {
-        clearTimeout(moveTimeoutRef.current);
-      }
-      if (audioSourceRef.current) {
-        audioSourceRef.current.disconnect();
-        audioSourceRef.current = null;
-      }
-      if (audioContext) {
-        audioContext.close();
-      }
     };
-  }, [videoPath, audioPath]);
+  }, [videoPath]);
+  
 
   
   useEffect(() => {
@@ -186,11 +168,6 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
     }
   }, [videoPath]);
   
-
-  const previousFrameTimeRef = useRef<number>(0);
-  const rafRef = useRef<number>();
-  const lastTargetTimeRef = useRef<number>(0);
-  
   useEffect(() => {
     let lastTime = 0;
     const interval = 1000 / frameRate;
@@ -202,11 +179,6 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
         videoRef.current.videoWidth, 
         videoRef.current.videoHeight
       );
-      const data = imageData.data;
-      
-      for (let i = 0; i < data.length; i += 4) {
-        const noise = (Math.random() - 0.5) * distortionLevel;
-      }
       
       contextRef.current.putImageData(imageData, 0, 0);
     };
@@ -302,8 +274,10 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       }
     };
   
-    initAudioContext();
-  }, []); 
+    if (hasInteracted) {
+      initAudioContext();
+    }
+  }, [hasInteracted]);
 
   const handleMouseMove = async (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isLoaded || !audioRef.current) return;
@@ -396,7 +370,7 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
           }}
         />
         
-        {(!isLoaded || !audioLoaded) && (
+        {!isLoaded && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-75 text-white">
             <Loader className="w-8 h-8 animate-spin mb-4" />
             <div className="text-sm font-mono">{loadingState}</div>

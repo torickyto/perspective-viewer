@@ -58,7 +58,7 @@ export default function Home() {
         <div className="w-screen h-screen">
           <PerspectiveViewer 
             key={currentVideo}
-            videoPath={currentVideo === 'angel' ? '/videos/angelb.mp4' : '/videos/terribleb.mp4'}
+            videoPath={'/videos/terribleb.mp4'}
             audioPath="/teethr.mp3"
             smoothingFactor={0.999}
             frameRate={60}

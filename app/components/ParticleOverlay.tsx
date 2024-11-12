@@ -42,7 +42,7 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({
     return points;
   };
 
-  const createParticle = (canvas: HTMLCanvasElement, intense = false): Particle => {
+  const createParticle = React.useCallback((canvas: HTMLCanvasElement, intense = false): Particle => {
     const baseSize = intense ? 
       Math.random() * 4 + 3 : 
       Math.random() * 3 + 2;
@@ -58,7 +58,7 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({
       alpha: Math.random() * 0.4 + 0.2,
       points: createAshPoints(baseSize)
     };
-  };
+  }, []);
 
   useEffect(() => {
     if (!canvasRef.current) return;
