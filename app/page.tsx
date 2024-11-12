@@ -1,7 +1,6 @@
 'use client';
 
-import React from 'react';
-import Link from 'next/link';
+import React, { useState } from 'react';
 import PerspectiveViewer from './components/PerspectiveViewer';
 
 class ErrorBoundary extends React.Component<
@@ -32,28 +31,40 @@ class ErrorBoundary extends React.Component<
 }
 
 export default function Home() {
+  const [currentVideo, setCurrentVideo] = useState<'angel' | 'terrible'>('angel');
+  const [globalHasInteracted, setGlobalHasInteracted] = useState(false);
+
+  const toggleVideo = () => {
+    setCurrentVideo(current => current === 'angel' ? 'terrible' : 'angel');
+  };
+
   return (
     <ErrorBoundary>
       <main className="w-screen h-screen bg-black">
-        <Link 
-          href="/terrible" 
+        <button 
+          onClick={toggleVideo}
           className="fixed top-8 left-1/2 -translate-x-1/2 z-50 font-mono text-white/70 text-xl hover:text-white/90 transition-colors duration-300"
         >
           Иван IV Васильевич
-        </Link>
+        </button>
 
-        <Link 
-          href="/test" 
-          className="fixed top-8 right-8 z-50 font-mono text-white/70 hover:text-white/90 transition-colors duration-300"
-        >
-          TEST
-        </Link>
-        <PerspectiveViewer 
-          videoPath="/videos/angelr.mp4" 
-          audioPath="/teethr.mp3"
-          smoothingFactor={0.999}
-          frameRate={60}
-        />
+        {!globalHasInteracted && (
+          <div 
+            className="fixed inset-0 bg-black cursor-pointer z-40"
+            onClick={() => setGlobalHasInteracted(true)}
+          />
+        )}
+
+        <div className="w-screen h-screen">
+          <PerspectiveViewer 
+            key={currentVideo}
+            videoPath={currentVideo === 'angel' ? '/videos/angelb.mp4' : '/videos/terribleb.mp4'}
+            audioPath="/teethr.mp3"
+            smoothingFactor={0.999}
+            frameRate={60}
+            hasInteracted={globalHasInteracted}
+          />
+        </div>
       </main>
     </ErrorBoundary>
   );

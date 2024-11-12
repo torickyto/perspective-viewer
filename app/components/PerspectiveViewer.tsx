@@ -9,15 +9,16 @@ interface PerspectiveViewerProps {
   audioPath?: string;
   smoothingFactor?: number;
   frameRate?: number;
+  hasInteracted: boolean;
 }
 
 const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({ 
   videoPath,
   audioPath = '/teethr.mp3',
   smoothingFactor = 0.99,
-  frameRate = 60
+  frameRate = 60,
+  hasInteracted
 }) => {
-  const [hasInteracted, setHasInteracted] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -45,35 +46,54 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
   const isSeekingRef = useRef(false);
 
   const containerStyle = React.useMemo(() => {
-
-    if (videoPath.includes('terrible')) {
-      return {
-        width: '100vw',
-        height: '100vh',
-      };
-    }
-
-    const aspectRatio = videoSize.width / videoSize.height;
-    const vh = Math.min(window.innerHeight * 0.5, 500);
-    const vw = Math.min(window.innerWidth * 0.5, 800);
-    
-    let width;
-    let height;
-    
-    if (vw / vh > aspectRatio) {
-      height = vh;
-      width = vh * aspectRatio;
-    } else {
-      width = vw;
-      height = vw / aspectRatio;
-    }
-
-
     return {
-      width: `${width}px`,
-      height: `${height}px`,
+      width: '100vw',
+      height: '100vh',
     };
   }, [videoSize, videoPath]);
+
+  const updateCanvasSize = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    
+    const videoAspect = video.videoWidth / video.videoHeight;
+    const windowAspect = window.innerWidth / window.innerHeight;
+    
+    let scale;
+    let offsetX = 0;
+    let offsetY = 0;
+    
+    if (windowAspect > videoAspect) {
+      scale = window.innerWidth / video.videoWidth;
+      offsetY = (window.innerHeight - (video.videoHeight * scale)) / 2;
+    } else {
+      scale = window.innerHeight / video.videoHeight;
+      offsetX = (window.innerWidth - (video.videoWidth * scale)) / 2;
+    }
+
+    contextRef.current = canvas.getContext('2d', {
+      alpha: false,
+      desynchronized: true
+    });
+
+    if (contextRef.current) {
+      contextRef.current.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+    }
+  };
+
+  useEffect(() => {
+    const handleResize = () => {
+      updateCanvasSize();
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
 
   useEffect(() => {
@@ -154,47 +174,6 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
     };
   }, [videoPath, audioPath]);
 
-  const updateCanvasSize = () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-
-    if (videoPath.includes('terrible')) {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      
-      const videoAspect = video.videoWidth / video.videoHeight;
-      const windowAspect = window.innerWidth / window.innerHeight;
-      
-      let scale;
-      let offsetX = 0;
-      let offsetY = 0;
-      
-      if (windowAspect > videoAspect) {
-        scale = window.innerWidth / video.videoWidth;
-        offsetY = (window.innerHeight - (video.videoHeight * scale)) / 2;
-      } else {
-        scale = window.innerHeight / video.videoHeight;
-        offsetX = (window.innerWidth - (video.videoWidth * scale)) / 2;
-      }
-
-      contextRef.current = canvas.getContext('2d', {
-        alpha: false,
-        desynchronized: true
-      });
-
-      if (contextRef.current) {
-        contextRef.current.setTransform(scale, 0, 0, scale, offsetX, offsetY);
-      }
-    } else {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      contextRef.current = canvas.getContext('2d', {
-        alpha: false,
-        desynchronized: true
-      });
-    }
-  };
   
   useEffect(() => {
     if (videoPath.includes('terrible')) {
@@ -212,7 +191,6 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
   const rafRef = useRef<number>();
   const lastTargetTimeRef = useRef<number>(0);
   
-  // Animation and effects
   useEffect(() => {
     let lastTime = 0;
     const interval = 1000 / frameRate;
@@ -289,10 +267,8 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
     };
   }, [isLoaded, audioLoaded, smoothingFactor, frameRate, distortionLevel]);
 
-  const handleMouseMove = async (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isLoaded || !audioRef.current || !hasInteracted) return;
-    
-    if (!audioContext) {
+  useEffect(() => {
+    const initAudioContext = async () => {
       try {
         const ctx = new AudioContext();
         await ctx.resume();
@@ -308,7 +284,7 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
         const bassBoost = ctx.createGain();
         bassBoost.gain.value = 2.0;
   
-        if (!audioSourceRef.current) {
+        if (audioRef.current && !audioSourceRef.current) {
           const source = ctx.createMediaElementSource(audioRef.current);
           audioSourceRef.current = source;
           
@@ -324,8 +300,14 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       } catch (err) {
         console.error('Audio context initialization failed:', err);
       }
-    }
+    };
   
+    initAudioContext();
+  }, []); 
+
+  const handleMouseMove = async (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isLoaded || !audioRef.current) return;
+    
     const x = e.clientX / window.innerWidth;
     const y = e.clientY / window.innerHeight;
     
@@ -372,21 +354,10 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
 
   return (
     <div 
-      className={`relative ${videoPath.includes('terrible') ? 'w-screen h-screen' : 'w-full h-full'} bg-black flex items-center justify-center overflow-hidden`}
+      className="relative w-screen h-screen bg-black flex items-center justify-center overflow-hidden"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
-      {!hasInteracted && (
-        <div 
-          className="fixed inset-0 bg-black cursor-pointer z-50"
-          onClick={async () => {
-            setHasInteracted(true);
-            if (audioContext?.state === 'suspended') {
-              await audioContext.resume();
-            }
-          }}
-        />
-      )}
       <div 
         className="fixed inset-0 bg-black opacity-50 pointer-events-none"
         style={{
@@ -396,7 +367,7 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       
       <div 
         ref={containerRef}
-        className="relative select-none"
+        className="relative select-none w-screen h-screen"
         style={containerStyle}
       >
         <video
@@ -408,7 +379,7 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
         >
           <source src={videoPath} type="video/mp4" />
         </video>
-
+  
         <audio
           ref={audioRef}
           preload="auto"
@@ -416,10 +387,10 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
         >
           <source src={audioPath} type="audio/mpeg" />
         </audio>
-
+  
         <canvas
           ref={canvasRef}
-          className="w-full h-full object-contain shadow-2xl"
+          className="w-full h-full object-cover shadow-2xl"
           style={{
             filter: `contrast(1.1) saturate(${1 + distortionLevel * 0.01})`,
           }}
@@ -437,11 +408,12 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
           </div>
         )}
       </div>
-
+  
       <ParticleOverlay 
-      analyserNode={analyserRef.current}
-      isPlaying={isMoving && hasInteracted}
-    />
+        analyserNode={analyserRef.current}
+        isPlaying={isMoving}
+      />
+      
       {showInterface && (
         <div className="fixed bottom-4 left-4 text-white text-xs font-mono opacity-50">
           <div>TIME: {currentTimeRef.current.toFixed(2)}/{duration.toFixed(2)}</div>
@@ -452,6 +424,6 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       )}
     </div>
   );
-};
+}
 
 export default PerspectiveViewer;
