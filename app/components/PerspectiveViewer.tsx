@@ -13,7 +13,7 @@ interface PerspectiveViewerProps {
 
 const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({ 
   videoPath,
-  audioPath = '/teeth.mp3',
+  audioPath = '/teethr.mp3',
   smoothingFactor = 0.99,
   frameRate = 60
 }) => {
@@ -45,6 +45,14 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
   const isSeekingRef = useRef(false);
 
   const containerStyle = React.useMemo(() => {
+
+    if (videoPath.includes('terrible')) {
+      return {
+        width: '100vw',
+        height: '100vh',
+      };
+    }
+
     const aspectRatio = videoSize.width / videoSize.height;
     const vh = Math.min(window.innerHeight * 0.5, 500);
     const vw = Math.min(window.innerWidth * 0.5, 800);
@@ -60,11 +68,12 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       height = vw / aspectRatio;
     }
 
+
     return {
       width: `${width}px`,
       height: `${height}px`,
     };
-  }, [videoSize]);
+  }, [videoSize, videoPath]);
 
 
   useEffect(() => {
@@ -77,21 +86,6 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
     audio.preload = 'auto';
     audio.volume = 0.5; 
     audio.loop = true; 
-
-    const updateCanvasSize = () => {
-      if (video.videoWidth && video.videoHeight) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        setVideoSize({
-          width: video.videoWidth,
-          height: video.videoHeight
-        });
-        contextRef.current = canvas.getContext('2d', {
-          alpha: false,
-          desynchronized: true
-        });
-      }
-    };
 
     const handleLoadedMetadata = () => {
       console.log('Video metadata loaded:', {
@@ -160,6 +154,64 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
     };
   }, [videoPath, audioPath]);
 
+  const updateCanvasSize = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    if (videoPath.includes('terrible')) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      
+      const videoAspect = video.videoWidth / video.videoHeight;
+      const windowAspect = window.innerWidth / window.innerHeight;
+      
+      let scale;
+      let offsetX = 0;
+      let offsetY = 0;
+      
+      if (windowAspect > videoAspect) {
+        scale = window.innerWidth / video.videoWidth;
+        offsetY = (window.innerHeight - (video.videoHeight * scale)) / 2;
+      } else {
+        scale = window.innerHeight / video.videoHeight;
+        offsetX = (window.innerWidth - (video.videoWidth * scale)) / 2;
+      }
+
+      contextRef.current = canvas.getContext('2d', {
+        alpha: false,
+        desynchronized: true
+      });
+
+      if (contextRef.current) {
+        contextRef.current.setTransform(scale, 0, 0, scale, offsetX, offsetY);
+      }
+    } else {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      contextRef.current = canvas.getContext('2d', {
+        alpha: false,
+        desynchronized: true
+      });
+    }
+  };
+  
+  useEffect(() => {
+    if (videoPath.includes('terrible')) {
+      const handleResize = () => {
+        updateCanvasSize();
+      };
+
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, [videoPath]);
+  
+
+  const previousFrameTimeRef = useRef<number>(0);
+  const rafRef = useRef<number>();
+  const lastTargetTimeRef = useRef<number>(0);
+  
   // Animation and effects
   useEffect(() => {
     let lastTime = 0;
@@ -176,9 +228,6 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
       
       for (let i = 0; i < data.length; i += 4) {
         const noise = (Math.random() - 0.5) * distortionLevel;
-        data[i] += noise;     // R
-        data[i + 1] += noise; // G
-        data[i + 2] += noise; // B
       }
       
       contextRef.current.putImageData(imageData, 0, 0);
@@ -215,7 +264,6 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
           
           if (movement > 0.01) {
             const strength = movement * 10;
-            contextRef.current.globalCompositeOperation = 'screen';
             contextRef.current.drawImage(video, strength, 0);
             contextRef.current.drawImage(video, -strength, 0);
             contextRef.current.globalCompositeOperation = 'source-over';
@@ -260,12 +308,10 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
         const bassBoost = ctx.createGain();
         bassBoost.gain.value = 2.0;
   
-        // Only create source if it doesn't exist
         if (!audioSourceRef.current) {
           const source = ctx.createMediaElementSource(audioRef.current);
           audioSourceRef.current = source;
           
-          // Connect the audio chain
           source
             .connect(bassFilter)
             .connect(bassBoost)
@@ -326,7 +372,7 @@ const PerspectiveViewer: React.FC<PerspectiveViewerProps> = ({
 
   return (
     <div 
-      className="relative w-full h-full bg-black flex items-center justify-center overflow-hidden"
+      className={`relative ${videoPath.includes('terrible') ? 'w-screen h-screen' : 'w-full h-full'} bg-black flex items-center justify-center overflow-hidden`}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >

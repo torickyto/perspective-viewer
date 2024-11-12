@@ -54,7 +54,7 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({
       rotation: Math.random() * Math.PI * 2,
       rotationSpeed: (Math.random() - 0.5) * 0.05, 
       speedX: (Math.random() - 0.5) * (intense ? 3 : 1), 
-      speedY: intense ? -Math.random() * 12 - 4 : -Math.random() * 1.5 - 0.5, 
+      speedY: intense ? -Math.random() * 6 - 4 : -Math.random() * 1.5 - 0.5, 
       alpha: Math.random() * 0.4 + 0.2,
       points: createAshPoints(baseSize)
     };
@@ -141,7 +141,7 @@ const ParticleOverlay: React.FC<ParticleOverlayProps> = ({
 
       particlesRef.current = particlesRef.current.filter(particle => {
         if (isPlaying) {
-          particle.y += particle.speedY * (1 + bassIntensity * 1.5);
+          particle.y += particle.speedY * (1 + bassIntensity * .7);
           particle.x += particle.speedX * (1 + bassIntensity);
           particle.rotation += particle.rotationSpeed;
           particle.alpha *= 0.997;
